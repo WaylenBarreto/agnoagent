@@ -1,0 +1,11 @@
+# Local environment variables and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+
+# Python-generated files
+__pycache__/
+*.py[cod]

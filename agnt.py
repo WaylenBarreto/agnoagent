@@ -1,10 +1,16 @@
+import os
+
 from agno.agent import Agent
 from agno.knowledge.embedder.ollama import OllamaEmbedder
 from agno.knowledge.knowledge import Knowledge
 from agno.models.ollama import Ollama
 from agno.vectordb.pgvector import PgVector
 
-db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+db_url = os.getenv("DATABASE_URL", "postgresql+psycopg://ai:ai@localhost:5532/ai")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
+
+if not ollama_api_key:
+    raise RuntimeError("Set the OLLAMA_API_KEY environment variable before running this script.")
 
 knowledge = Knowledge(
     vector_db=PgVector(
@@ -17,7 +23,7 @@ knowledge = Knowledge(
 agent = Agent(
     model=Ollama(
         id="gpt-oss:120b-cloud",
-        api_key="bded4aa1f6d843afa989af00268b7d2b._kJpuuusaxvrCpJiOqMt7sax",
+        api_key=ollama_api_key,
     ),
     knowledge=knowledge,
     search_knowledge=True,
