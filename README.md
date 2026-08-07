@@ -24,7 +24,7 @@ $env:DATABASE_URL = "postgresql+psycopg://user:password@localhost:5532/database"
 
 | File | What it does | How to run |
 | --- | --- | --- |
-| `agent_with_knowledge.py` | Runs a FastAPI service that asks an Ollama model questions using a PostgreSQL/pgvector knowledge base. `POST /search` accepts a query and returns the answer; `GET /search/{id}` returns a saved result. Results are kept only in memory while the server runs. | `python -m uvicorn agent_with_knowledge:app --reload` |
+| `agent_with_knowledge.py` | Runs a FastAPI service that accepts PDF uploads, indexes them in a PostgreSQL/pgvector knowledge base, and answers questions with an Ollama model. `POST /documents` uploads and indexes a PDF; `POST /search` asks a question about a selected document ID; `GET /search/{id}` returns a saved result. Results are kept only in memory while the server runs. | `python -m uvicorn agent_with_knowledge:app --reload` |
 | `agnt.py` | Inserts two PDF sources into the `thai_recipes` pgvector knowledge base, then asks the Ollama agent for a combined summary. | `python agnt.py` |
 | `news.py` | Uses Groq and the Hacker News tool to generate a streamed report about trending startups and products. Requires `GROQ_API_KEY`. | `python news.py` |
 | `pdf.py` | Reads the local `C:\Users\Admin\Desktop\climate.pdf` one page at a time and asks a Groq model to summarize its text. Requires `GROQ_API_KEY` and that PDF file. | `python pdf.py` |
@@ -39,21 +39,62 @@ Start the API from this folder:
 python -m uvicorn agent_with_knowledge:app --reload
 ```
 
-In Postman, submit a question:
+### Upload a PDF
 
-```http
-POST http://127.0.0.1:8000/search
-Content-Type: application/json
+In Postman, create this request:
 
+- Method: `POST`
+- URL: `http://127.0.0.1:8000/documents`
+- Body: select **form-data**
+- Add a field named `file`, change its type from **Text** to **File**, then choose your PDF.
+- Optional text fields: `department`, `version`, and `user_tag`.
+
+For example, the equivalent metadata fields are:
+
+| Key | Value |
+| --- | --- |
+| `file` | your PDF file |
+| `department` | `engineering` |
+| `version` | `2.1` |
+| `user_tag` | `custom` |
+
+The API returns a document ID after it has saved and indexed the PDF. Uploaded PDFs are stored locally in `uploaded_pdfs/`, which is ignored by Git.
+
+If no `file` form-data field is sent, FastAPI returns `422 Unprocessable Content`. If a non-PDF is sent, the API returns `400 Only PDF files are accepted`.
+
+### Ask a question
+
+After the upload succeeds, copy the PDF `id` returned by `POST /documents`. Include it with every `POST http://127.0.0.1:8000/search` request; this ensures the search is limited to that uploaded PDF:
+
+```json
 {
-  "query": "What Thai recipes are available in the knowledge base?"
+  "document_id": "paste-the-id-returned-by-documents-here",
+  "query": "What are the main conclusions of this PDF?"
 }
 ```
 
-The response contains an `id`, the submitted `query`, and the generated `output`. Retrieve the saved result with:
+The response contains a search `id`, `document_id`, the submitted `query`, and the generated `output`. Retrieve the saved result with:
 
 ```http
 GET http://127.0.0.1:8000/search/<id>
 ```
 
 Interactive endpoint documentation is available at `http://127.0.0.1:8000/docs`.
+
+If you try to search before a PDF has been uploaded since the server started, the API returns this clear error:
+
+```json
+{
+  "detail": "No PDF has been uploaded. Upload a PDF with POST /documents before searching."
+}
+```
+
+## How `agent_with_knowledge.py` works
+
+- `Knowledge(...)` configures the pgvector database where PDF text is embedded and stored. `OllamaEmbedder` converts each text chunk into an embedding for semantic search.
+- `Agent(...)` configures the Ollama language model. The API retrieves the relevant chunks itself so it can restrict them to the requested document ID, then passes those excerpts to the agent.
+- `upload_document(...)` is the `POST /documents` function. It receives the `file` from Postman, checks that it is a PDF, saves it in `uploaded_pdfs/`, and calls `knowledge.insert(...)`. `PDFReader(split_on_pages=True)` reads the PDF a page at a time. The optional metadata fields are stored with the indexed chunks.
+- `create_search(...)` is the `POST /search` function. It first checks the supplied `document_id`, retrieves matching chunks only from that PDF, and provides them to `agent.run(...)` with your `query`. The returned answer is saved under a generated search ID and sent back in `output`.
+- `get_search(...)` is the `GET /search/{search_id}` function. It looks up and returns a result produced earlier by `create_search(...)`; unknown IDs return `404`.
+- `response_text(...)` extracts the readable answer from Agno's response object.
+- `knowledge_lock` prevents an upload from modifying the knowledge base while another request is searching it. `results_lock` protects the in-memory saved search results.

@@ -9,3 +9,6 @@ secrets/
 # Python-generated files
 __pycache__/
 *.py[cod]
+
+# Uploaded source documents are indexed locally, not committed
+uploaded_pdfs/

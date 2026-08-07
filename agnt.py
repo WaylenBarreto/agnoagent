@@ -14,7 +14,7 @@ if not ollama_api_key:
 
 knowledge = Knowledge(
     vector_db=PgVector(
-        table_name="thai_recipes",
+        table_name="knowledgebase",
         db_url=db_url,
         embedder=OllamaEmbedder(id="nomic-embed-text", dimensions=768),
     ),
@@ -31,9 +31,11 @@ agent = Agent(
 )
 
 if __name__ == "__main__":
+    id = 54765876
     knowledge.insert(
         name="Thai Recipes",
         url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
+        metadata={"id": id}
     )
     knowledge.insert(
         name="Agno Cookbook",
