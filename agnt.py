@@ -18,6 +18,7 @@ knowledge = Knowledge(
         db_url=db_url,
         embedder=OllamaEmbedder(id="nomic-embed-text", dimensions=768),
     ),
+    
 )
 
 agent = Agent(
