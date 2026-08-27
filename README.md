@@ -65,6 +65,52 @@ The example API key maps requests to tenant `company-1`. Open the interactive AP
 
 For a real deployment, use a secrets manager and replace the demo API-key mapping with an identity provider. Do not commit `.env` files, credentials, tokens, uploaded PDFs, or database files.
 
+## Docker Database Setup
+
+The current repository does not include a `Dockerfile` or Compose configuration for the API. Docker can still provide a consistent local PostgreSQL/pgvector database while the FastAPI process runs from your Python virtual environment.
+
+Create a Docker network and start PostgreSQL:
+
+```powershell
+docker network create rag-network
+docker run --name rag-postgres `
+  --network rag-network `
+  -e POSTGRES_USER=rag `
+  -e POSTGRES_PASSWORD=rag_password `
+  -e POSTGRES_DB=rag `
+  -p 5432:5432 `
+  -v rag-postgres-data:/var/lib/postgresql/data `
+  -d pgvector/pgvector:pg16
+```
+
+Verify the container and enable the vector extension:
+
+```powershell
+docker ps
+docker logs rag-postgres
+docker exec -it rag-postgres psql -U rag -d rag -c "CREATE EXTENSION IF NOT EXISTS vector;"
+```
+
+Then run the API locally with the database exposed on `localhost:5432`:
+
+```powershell
+$env:DATABASE_URL = "postgresql+psycopg://rag:rag_password@localhost:5432/rag"
+$env:OLLAMA_API_KEY = "your-ollama-api-key"
+$env:RAG_API_KEYS = "dev-api-key:company-1"
+python -m uvicorn agent_with_knowledge:app --reload
+```
+
+Stop or remove the local database when finished:
+
+```powershell
+docker stop rag-postgres
+docker start rag-postgres
+docker rm -f rag-postgres
+docker volume rm rag-postgres-data
+```
+
+The final two commands permanently remove the local database volume and all stored PostgreSQL data.
+
 ## API Endpoints
 
 | Method | Path | Purpose |
